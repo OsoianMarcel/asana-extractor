@@ -22,6 +22,7 @@ const (
 // Client represents an Asana API client.
 type Client struct {
 	token      string
+	baseURL    string
 	httpClient *http.Client
 	limiter    *limiter.Limiter
 	logger     *slog.Logger
@@ -30,13 +31,19 @@ type Client struct {
 // NewClient creates a new Asana API client.
 func NewClient(token string, rateLimiter *limiter.Limiter, logger *slog.Logger) *Client {
 	return &Client{
-		token: token,
+		token:   token,
+		baseURL: asanaBaseURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		limiter: rateLimiter,
 		logger:  logger,
 	}
+}
+
+// SetBaseURL sets a custom base URL (useful for testing).
+func (c *Client) SetBaseURL(url string) {
+	c.baseURL = url
 }
 
 // waitForRateLimit waits for the rate limiter to allow a GET request.
@@ -75,7 +82,7 @@ func (c *Client) GetWorkspaces(ctx context.Context) ([]models.Workspace, error) 
 	}
 	defer c.releaseRateLimit()
 
-	url := fmt.Sprintf("%s/workspaces?limit=%d", asanaBaseURL, pageSize)
+	url := fmt.Sprintf("%s/workspaces?limit=%d", c.baseURL, pageSize)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -126,7 +133,7 @@ func (c *Client) GetUsers(ctx context.Context, workspaceID string) ([]models.Use
 	c.logger.Info("fetching users from Asana API", "workspace", workspaceID)
 
 	var users []models.User
-	url := fmt.Sprintf("%s/users?workspace=%s&limit=%d", asanaBaseURL, workspaceID, pageSize)
+	url := fmt.Sprintf("%s/users?workspace=%s&limit=%d", c.baseURL, workspaceID, pageSize)
 
 	for url != "" {
 		data, nextURL, err := c.fetchPage(ctx, url)
@@ -164,7 +171,7 @@ func (c *Client) GetProjects(ctx context.Context, workspaceID string) ([]models.
 	c.logger.Info("fetching projects from Asana API", "workspace", workspaceID)
 
 	var projects []models.Project
-	url := fmt.Sprintf("%s/projects?workspace=%s&limit=%d", asanaBaseURL, workspaceID, pageSize)
+	url := fmt.Sprintf("%s/projects?workspace=%s&limit=%d", c.baseURL, workspaceID, pageSize)
 
 	for url != "" {
 		data, nextURL, err := c.fetchPage(ctx, url)
@@ -202,7 +209,7 @@ func (c *Client) GetTasksForProject(ctx context.Context, projectGID string) ([]m
 	c.logger.Debug("fetching tasks for project", "project", projectGID)
 
 	var tasks []models.Task
-	url := fmt.Sprintf("%s/projects/%s/tasks?limit=%d", asanaBaseURL, projectGID, pageSize)
+	url := fmt.Sprintf("%s/projects/%s/tasks?limit=%d", c.baseURL, projectGID, pageSize)
 
 	for url != "" {
 		data, nextURL, err := c.fetchPageWithTaskFields(ctx, url)
@@ -287,7 +294,7 @@ func (c *Client) fetchPage(ctx context.Context, url string) ([]map[string]interf
 
 	nextURL := ""
 	if apiResp.NextPage != nil {
-		nextURL = fmt.Sprintf("%s%s", asanaBaseURL, apiResp.NextPage.Path)
+		nextURL = fmt.Sprintf("%s%s", c.baseURL, apiResp.NextPage.Path)
 	}
 
 	return apiResp.Data, nextURL, nil
@@ -344,7 +351,7 @@ func (c *Client) fetchPageWithTaskFields(ctx context.Context, url string) ([]map
 
 	nextURL := ""
 	if apiResp.NextPage != nil {
-		nextURL = fmt.Sprintf("%s%s", asanaBaseURL, apiResp.NextPage.Path)
+		nextURL = fmt.Sprintf("%s%s", c.baseURL, apiResp.NextPage.Path)
 	}
 
 	return apiResp.Data, nextURL, nil
